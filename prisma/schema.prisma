@@ -11,10 +11,29 @@ datasource db {
   directUrl = env("POSTGRES_URL_NON_POOLING") // uses a direct connection
 }
 
-model users {
+model user {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
-  image     String
+  images    Json
   createdAt DateTime @default(now())
+}
+
+model device {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  uniqueId  String
+  os        String
+  createdAt DateTime @default(now())
+
+  @@unique([uniqueId, os])
+  @@index([userId])
+}
+
+model deviceTimes {
+  id        Int      @id @default(autoincrement())
+  uniqueId  String
+  createdAt DateTime @default(now())
+  @@index([uniqueId, os])
 }
