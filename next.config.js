@@ -6,6 +6,19 @@ const nextConfig = {
   images: {
     domains: ['pbs.twimg.com'],
   },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'authorization',
+            value: 'Bearer (.*)',
+          },
+        ],
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig
