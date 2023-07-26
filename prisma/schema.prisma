@@ -13,9 +13,9 @@ datasource db {
 
 model user {
   id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  images    Json
+  name      String?
+  email     String?
+  images    Json?
   createdAt DateTime @default(now())
   device    device[]
 }
