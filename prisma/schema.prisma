@@ -18,6 +18,7 @@ model user {
   images    Json?
   createdAt DateTime @default(now())
   device    device[]
+  image    image[]
 }
 
 model device {
@@ -38,4 +39,27 @@ model deviceTimes {
   createdAt DateTime @default(now())
 
   @@index([uniqueId])
+}
+
+
+model image {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      user?    @relation(fields: [userId], references: [id])
+  secure_url  String
+  tags      Json?
+  generated   Boolean? @default(false)
+  generatedImages Json?
+  paid      Boolean? @default(false)
+  approved  Boolean? @default(true)
+  verified  Boolean? @default(false)
+  public    Boolean? @default(false)
+  nsfw      Boolean? @default(false)
+  uploaded  Boolean? @default(false)
+  createdAt DateTime @default(now())
+  archived  Boolean? @default(false)
+  deleted   Boolean? @default(false)
+  data      Json?
+  @@index([userId, approved])
+  @@index([userId, archived, createdAt, deleted])
 }
