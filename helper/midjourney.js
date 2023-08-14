@@ -4,11 +4,13 @@ const { pushToPusher } = require('./pusher');
 const { sha256, encryptJwtBase64 } = require('./encryption');
 const prisma = require('../lib/prisma');
 const cloudinary = require('../lib/cloudinary');
+const { UPLOAD_STATUS: STATUS } = require('../constants/status');
 
 const uploadToMidjourney = async function (body) {
     console.log("Sending to midjourney");
     const { prompt, userId, imageId } = body;
     console.log("Processing: ", prompt, userId, imageId);
+    // initializes midjourney
     const client = new Midjourney({
         ServerId: process.env.DISCORD_SERVER_ID,
         ChannelId: process.env.DISCORD_CHANNEL_ID,
@@ -20,21 +22,36 @@ const uploadToMidjourney = async function (body) {
     await client.init();
     //imagine
     console.log("Imagining");
-    let savedData = false;
     let newImage;
     let newUri;
     let updatedProgress;
 
-
-    const timeout = setTimeout(async() => {
-        console.log("55 seconds - about to timeout");
-
-        if (updatedProgress < 100) {
-            await enqueueUpdate({ body: { userId, imageId: newImage?.id, uri: newUri, api_key: process.env.SELF_API_KEY }});
-        }
-    }, 55000);
-
     console.log("Imagining: ", prompt);
+
+    const upload = await prisma.upload.findFirst({
+        where: {
+            userId,
+            imageId,
+            active: true
+        },
+        select: { 
+            id: true
+        }
+    })
+
+    if (upload) {
+        console.log('Found Upload - saving status as processing');
+        await prisma.upload.update({
+            where: {
+                id: upload.id
+            },
+            data: {
+                status:  STATUS.PROCESSING
+            }
+        });
+    }
+
+
     const result = await client.Imagine(
     prompt,
     async(uri, progress) => {
@@ -43,13 +60,22 @@ const uploadToMidjourney = async function (body) {
             updatedProgress = progress;
             newUri = uri;
             pushToPusher(sha256(userId), `queued`, { secure_url: uri, progress });
+
+            if (upload) {
+                await prisma.upload.update({
+                    where: {
+                        id: upload.id
+                    },
+                    data: {
+                        progress
+                    }
+                })
+            }
         }
     ); 
-
-    clearTimeout(timeout);
     console.log("Done Imagining: ", result.uri);
-    updatedProgress = 100;
-
+    updatedProgress = '100%';
+    
     const image = await prisma.image.findFirst({
         where: {
             id: imageId
@@ -84,10 +110,15 @@ const uploadToMidjourney = async function (body) {
 
     newImage = await prisma.image.create({
         data: {
-            userId,
+            user: {
+                connect: {
+                    id: userId
+                }
+            },
             secure_url,
             generated: true,
             approved: false,
+            choices: true,
             data: {
                 msgId: result.id,
                 flags: result.flags,
@@ -97,6 +128,22 @@ const uploadToMidjourney = async function (body) {
             }
         }
     })
+
+    if (upload) {
+        console.log("Marking complete")
+        await prisma.upload.update({
+            where: {
+                id: upload.id
+            },
+            data: {
+                generatedImageId: newImage.id,
+                status: STATUS.COMPLETE,
+                completedAt: new Date(),
+                active: false,
+                progress: "100%"
+            }
+        })
+    }
     await pushToPusher(sha256(userId), `complete`, { secure_url, progress: 100, id: encryptJwtBase64({ data: { imageId: newImage.id } }) });
     console.log("Pushing complete: ", secure_url);
 }
@@ -188,10 +235,10 @@ const checkMidjourney = async function(data) {
 }
 
 
-const queueUploadToMidjourney = async function(prompt, userId, imageId) {
+const queueUploadToMidjourney = async function(prompt, userId, imageId, count = 0) {
     console.log("Queuing midjourney imageId: ", imageId);
 
-    const result = await enqueue({ body: { prompt, userId, imageId, api_key: process.env.SELF_API_KEY }});
+    const result = await enqueue({ body: { prompt, userId, imageId, api_key: process.env.SELF_API_KEY, count}});
 
     console.log("Queued");
 

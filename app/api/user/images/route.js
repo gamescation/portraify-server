@@ -7,7 +7,8 @@ const returnValues = function(image) {
     return {
         secure_url: image.secure_url,
         id: encryptJwtBase64({ data: { imageId: image.id }}),
-        generated: image.generated
+        generated: image.generated,
+        choices: image.choices
     }
 }
 

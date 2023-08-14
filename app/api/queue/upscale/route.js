@@ -44,10 +44,15 @@ async function POST(req, res) {
         console.log("Creating image");
         const newImage = await prisma.image.create({
             data: {
-                userId,
+                user: {
+                    connect: {
+                        id: userId
+                    }
+                },
                 secure_url: result.secure_url,
                 generated: true,
                 approved: true,
+                upscaled: true,
                 data: {
                     msgId,
                     choice

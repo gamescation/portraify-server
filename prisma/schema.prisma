@@ -19,6 +19,7 @@ model user {
   createdAt DateTime @default(now())
   device    device[]
   image    image[]
+  upload    upload[]
 }
 
 model device {
@@ -56,10 +57,30 @@ model image {
   public    Boolean? @default(false)
   nsfw      Boolean? @default(false)
   uploaded  Boolean? @default(false)
+  choices   Boolean? @default(false)
   createdAt DateTime @default(now())
   archived  Boolean? @default(false)
   deleted   Boolean? @default(false)
+  upscaled  Boolean? @default(false)
   data      Json?
   @@index([userId, approved])
   @@index([userId, archived, createdAt, deleted])
+}
+
+model upload {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      user?    @relation(fields: [userId], references: [id])
+  status    String
+  progress  String? 
+  active    Boolean  @default(false)
+  seen      Boolean?  @default(false)
+  imageId   Int?
+  generatedImageId  Int?
+  retrying  Boolean?
+  data      Json?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([userId, status, active])
 }

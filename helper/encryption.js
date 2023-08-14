@@ -77,11 +77,17 @@ const validateHash = ({ uniqueId, time, os, hash }) => {
     return sha256(`${uniqueId}-${time}-${appSecret}-${os}`) === hash;
 }
 
+const getIdFromEncryptedString = (str, key) => {
+    const result = decryptJwtBase64(str);
+    return result && result[key] ? result[key]: result && result.id ? result.id: "";
+}
+
 module.exports = {
     encryptJwtBase64,
     decryptJwtBase64,
     appSecret,
     sha256,
     generateToken,
-    validateHash
+    validateHash,
+    getIdFromEncryptedString
 }
