@@ -23,6 +23,7 @@ async function POST(req, res) {
         const { imageId: encryptedImageId, data } = json;
 
         if (!encryptedImageId) {
+            console.error('No image id');
             return  NextResponse.json({status: false, message: "No imageId"});
         }
 
@@ -107,7 +108,7 @@ async function POST(req, res) {
         })
         console.log("Upload created");
 
-        return NextResponse.json({ status: STATUS.QUEUED, uid: encryptJwtBase64({ data: { imageId: newUpload.id }})});
+        return NextResponse.json({ status: true, uid: encryptJwtBase64({ data: { imageId: newUpload.id }})});
     } catch (error) {
         logError(error);
         return NextResponse.json({status: false});

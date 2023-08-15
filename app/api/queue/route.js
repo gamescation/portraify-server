@@ -5,7 +5,7 @@ const { UPLOAD_STATUS } = require('../../../constants/status');
 
 const maxTries = 3;
 
-async function requeueJob(userId, prompt, imageId, count) {
+async function requeueJob(userId, prompt, imageId, count = 0) {
     const upload = await prisma.upload.findFirst({
         where: {
             userId,
@@ -47,7 +47,7 @@ const TIMEOUT = 59000;
 
 async function POST(req, res) {
     const json = await req.json();
-    const { prompt, userId, imageId, api_key, count } = json;
+    const { prompt, userId, imageId, api_key, count = 0 } = json;
     console.log("Uploading midjourney");
 
     if (api_key !== process.env.SELF_API_KEY) {
