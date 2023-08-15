@@ -43,10 +43,6 @@ async function requeueJob(userId, prompt, imageId, count = 0) {
     }
 }
 
-export const runtime = 'edge'
-export const maxDuration = 10
- 
-
 async function POST(req, res) {
     const json = await req.json();
     const { prompt, userId, imageId, api_key, count = 0 } = json;
