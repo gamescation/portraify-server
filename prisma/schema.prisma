@@ -73,6 +73,8 @@ model upload {
   user      user?    @relation(fields: [userId], references: [id])
   status    String
   progress  String? 
+  prompt    String? 
+  uri       String?
   active    Boolean  @default(false)
   seen      Boolean?  @default(false)
   imageId   Int?

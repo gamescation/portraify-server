@@ -1,7 +1,7 @@
 const { Midjourney } = require('midjourney');
 const axios = require('axios');
 const { pushToPusher } = require('./pusher');
-const { sha256, encryptJwtBase64 } = require('./encryption');
+const { sha256, encryptJwtBase64, decryptJwtBase64 } = require('./encryption');
 const prisma = require('../lib/edge-prisma');
 const cloudinary = require('../lib/cloudinary');
 const { UPLOAD_STATUS: STATUS } = require('../constants/status');
@@ -23,8 +23,6 @@ const uploadToMidjourney = async function (body) {
     //imagine
     console.log("Imagining");
     let newImage;
-    let newUri;
-    let updatedProgress;
 
     console.log("Imagining: ", prompt);
 
@@ -53,13 +51,26 @@ const uploadToMidjourney = async function (body) {
 
 
     console.log("Going to imagine");
+    let updatedProgress = 0;
     const result = await client.Imagine(
     prompt,
     async(uri, progress) => {
             console.log("pushing to channel: ", sha256(userId), uri, progress);
             updatedProgress = progress;
-            newUri = uri;
             await pushToPusher(sha256(userId), `queued`, { secure_url: uri, progress });
+
+            if (upload) {
+                console.log("Updating upload: ", uri);
+                await prisma.upload.update({
+                    where: {
+                        id: upload.id
+                    },
+                    data: {
+                        progress,
+                        uri: uri
+                    }
+                })
+            }
         }
     ); 
     console.log("Done Imagining: ", result.uri);
@@ -125,6 +136,7 @@ const uploadToMidjourney = async function (body) {
                 id: upload.id
             },
             data: {
+                uri: secure_url,
                 generatedImageId: newImage.id,
                 status: STATUS.COMPLETE,
                 completedAt: new Date(),
@@ -135,6 +147,8 @@ const uploadToMidjourney = async function (body) {
     }
     await pushToPusher(sha256(userId), `complete`, { secure_url, progress: 100, id: encryptJwtBase64({ data: { imageId: newImage.id } }) });
     console.log("Pushing complete: ", secure_url);
+
+    return newImage;
 }
 
 const upscale = async function({ customId, msgId, userId, flags }) {
@@ -234,6 +248,109 @@ const queueUploadToMidjourney = async function(prompt, userId, imageId, count = 
     return result;
 }
 
+const presetBackgroundInfo = {
+    office: 'office background, high rise background, big window '
+}
+
+const generatePrompt = (secure_url, data) => {
+    const gender = data.gender ? `${data.gender}, `: ``;
+
+    let background = data.background ? `${data.background} background, `: `office background, high rise background, big window background`;
+
+    if (presetBackgroundInfo[background.toLowerCase()]) {
+        background = presetBackgroundInfo[background.toLowerCase()];
+    }
+
+    const type = data.type ? `${data.type},`: `headshot, professional, `;
+
+    return `${secure_url} ${type} ${gender} ${background} soft, in focus, gentle lighting, younger, clear skin, youthful --v 5.2 --no distort --ar 9:16 --s 750`;
+}
+
+
+const queueUpload = async(json, userId) => {
+    const { imageId: encryptedImageId, data } = json;
+
+    if (!encryptedImageId) {
+        console.error('No image id');
+        return  NextResponse.json({success: false, message: "No imageId"});
+    }
+
+    const decryptedImageId = decryptJwtBase64(encryptedImageId);
+    const { imageId } = decryptedImageId;
+    console.log("Decrypted image id: ", imageId);
+
+
+    console.log("Finding user");
+    const existingUser = await prisma.user.findFirst({
+        where: {
+            id: userId
+        },
+        select: {
+            id: true,
+        }
+    });
+
+    if (!existingUser) {
+        console.error("Could not find user");
+        return NextResponse.json({ success: false});
+    }
+
+    console.log("Found user");
+    console.log("Looking for upload");
+    const upload = await prisma.upload.findFirst({
+        where: {
+            userId,
+            imageId,
+            active: true,
+        },
+        select: {
+            id: true,
+
+        }
+    })
+    
+    if (upload) {
+        console.log("Upload currently active - WRITE CODE TO check discord");
+        // if (upload.uri) 
+        // const result = await checkDiscord({ messageId: upload.uri});
+    }
+
+    const image = await prisma.image.findFirst({
+        where: {
+            id: imageId
+        },
+        select: {
+            id: true,
+            secure_url: true
+        }
+    })
+
+    if (!image) {
+        return NextResponse.json({ success: false, message: "Could not find image" });
+    }
+
+    const { secure_url } = image;
+    const prompt = generatePrompt(secure_url, data)
+    console.log("Creating upload")
+    const newUpload = await prisma.upload.create({
+        data: {
+            user: {
+                connect: {
+                    id: userId
+                }
+            },
+            active: true,
+            status: STATUS.QUEUED,
+            imageId: image.id,
+            prompt
+        }
+    })
+    console.log("Upload created");
+    
+    await queueUploadToMidjourney(prompt, userId, image.id);
+    return { image, newUpload };
+}
+
 
 
 module.exports = {
@@ -242,5 +359,8 @@ module.exports = {
     checkMidjourney,
     upscale,
     enqueueUpdate,
-    enqueueUpscale
+    enqueueUpscale,
+    checkDiscord,
+    queueUpload,
+    generatePrompt
 }

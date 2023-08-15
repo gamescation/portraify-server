@@ -3,6 +3,12 @@ const prisma = require('../../../../lib/prisma');
 const { UPLOAD_STATUS } = require('../../../../constants/status');
 const { encryptJwtBase64, getIdFromEncryptedString } = require('../../../../helper/encryption');
 const { userIdFromReq } = require('../../../../helper/userHelper');
+const { checkDiscord, generatePrompt, uploadToMidjourney } = require('../../../../helper/midjourney');
+
+const getMessageIdFromUrl = (uri) => {
+    const spl = uri.split('/');
+    return spl[spl.length - 1];
+}
 
 async function POST(req, res) {
     const json = await req.json();
@@ -10,6 +16,11 @@ async function POST(req, res) {
 
     console.log("Checking upload status");
     try {
+        const retryUpload = async(upload) => {
+            // queued, or not? lets just upload now in case
+            const result = await uploadToMidjourney(upload);
+            return result;
+        }
         const upload = await prisma.upload.findFirst({
             where: {
                 userId,
@@ -18,9 +29,31 @@ async function POST(req, res) {
             }
         })
 
-        console.log("Upload status and progress: ", upload?.status, upload?.progress)
-        if (upload?.status === UPLOAD_STATUS.QUEUED || upload?.status === UPLOAD_STATUS.PROCESSING) {
-            return NextResponse.json({ success: true, status: upload?.status, complete: false })
+        console.log("Upload status and progress: ", upload?.prompt, upload?.status, upload?.uri, upload?.progress, upload?.prompt);
+        if (!upload) {
+            const prompt = generatePrompt(secure_url, data)
+            const result = await uploadToMidjourney({ prompt, userId, imageId: upload.imageId });
+            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+        }
+
+
+        if (upload?.status === UPLOAD_STATUS.QUEUED) {
+            const result = await retryUpload(upload);
+            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+        }
+        
+        if (upload?.status === UPLOAD_STATUS.PROCESSING) {
+            if (upload.uri) {
+                const messageId = getMessageIdFromUrl(upload.uri);
+                const discord = await checkDiscord({ messageId });
+
+                console.log("discord message: ", discord);
+
+                return NextResponse.json({ success: true, status: upload?.status, complete: false })
+            } else {
+                const result = await retryUpload(upload);
+                return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+            }
         } else if (upload?.status === UPLOAD_STATUS.COMPLETE) {
             console.log("This job is complete");
             const image = await prisma.image.findFirst({
@@ -33,21 +66,13 @@ async function POST(req, res) {
                 }
             })
 
-            if (image?.secure_url) {
-                console.log("Secure URL present");
-                const { secure_url } = image;
-                return NextResponse.json({ success: true, generating: false, complete: true, secure_url, id: encryptJwtBase64({ data: { imageId: image.id }}) });
-            } 
-            console.log("Secure URL not found");
-        } else if (upload?.status === UPLOAD_STATUS.TIMED_OUT) {
-            console.log("**** Upload timed out");
-            return NextResponse.json({ success: true, status: UPLOAD_STATUS.TIMED_OUT, complete: false, retrying: upload.retrying })
+            const { secure_url } = image;
+            return NextResponse.json({ success: true, generating: false, complete: true, secure_url, id: encryptJwtBase64({ data: { imageId: image.id }}) });
         } else {
             console.log("Upload not found");
+            const result = await retryUpload(upload);
+            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
         }
-
-        // console.log("Queue Job", result);
-        return NextResponse.json({ success: true, generating: false, complete: false });
     } catch(e) {
         console.error(`Error checking upload status: ${e.message} ${e.stack}`);
         return NextResponse.json({ success: false });
