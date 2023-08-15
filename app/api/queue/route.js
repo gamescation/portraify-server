@@ -1,6 +1,6 @@
 const { NextResponse } = require('next/server');
 const { uploadToMidjourney, queueUploadToMidjourney } = require('../../../helper/midjourney');
-const prisma = require('../../../lib/prisma');
+const prisma = require('../../../lib/edge-prisma');
 const { UPLOAD_STATUS } = require('../../../constants/status');
 
 const maxTries = 3;
@@ -43,7 +43,9 @@ async function requeueJob(userId, prompt, imageId, count = 0) {
     }
 }
 
-const TIMEOUT = 59000;
+export const runtime = 'edge'
+export const maxDuration = 10
+ 
 
 async function POST(req, res) {
     const json = await req.json();
@@ -54,16 +56,10 @@ async function POST(req, res) {
         return NextResponse.json({ success: false });
     }
 
-    try { 
-        const timeout = setTimeout(async() => {
-            console.log("Timing out");
-            await requeueJob(userId, prompt, imageId, count);
-        }, TIMEOUT);
-
+    try {
+        console.log("Uploading to Midjourney")
         await uploadToMidjourney({ prompt, userId, imageId });
-        console.log("Job completed on time");
-        clearTimeout(timeout);
-        // console.log("Queue Job", result);
+        console.log("Done uploading to Midjourney")
         return NextResponse.json({ success: true });
     } catch(e) {
         console.error(`Error posting upload ${e.message} ${e.stack}`);

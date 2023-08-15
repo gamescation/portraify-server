@@ -16,7 +16,7 @@ async function POST(req, res) {
     console.log(`Post userId: ${userId}`);
 
     if (!userId) {
-        return NextResponse.json({status: false});
+        return NextResponse.json({success: false});
     }
 
     try {
@@ -24,7 +24,7 @@ async function POST(req, res) {
 
         if (!encryptedImageId) {
             console.error('No image id');
-            return  NextResponse.json({status: false, message: "No imageId"});
+            return  NextResponse.json({success: false, message: "No imageId"});
         }
 
         const decryptedImageId = decryptJwtBase64(encryptedImageId);
@@ -43,7 +43,8 @@ async function POST(req, res) {
         });
 
         if (!existingUser) {
-            return NextResponse.json({status: false});
+            console.error("Could not find user");
+            return NextResponse.json({ success: false});
         }
 
         console.log("Found user");
@@ -61,7 +62,7 @@ async function POST(req, res) {
         
         if (upload) {
             console.log("Upload currently active, returning");
-            return NextResponse.json({ status: true, upload: true })
+            return NextResponse.json({ success: true, upload: true })
         }
 
         const gender = data.gender ? `${data.gender}, `: ``;
@@ -85,7 +86,7 @@ async function POST(req, res) {
         })
 
         if (!image) {
-            return NextResponse.json({ status: false, message: "Could not find image" });
+            return NextResponse.json({ success: false, message: "Could not find image" });
         }
 
         const { secure_url } = image;
@@ -108,10 +109,10 @@ async function POST(req, res) {
         })
         console.log("Upload created");
 
-        return NextResponse.json({ status: true, uid: encryptJwtBase64({ data: { imageId: newUpload.id }})});
+        return NextResponse.json({ success: true, uid: encryptJwtBase64({ data: { imageId: newUpload.id }})});
     } catch (error) {
         logError(error);
-        return NextResponse.json({status: false});
+        return NextResponse.json({success: false});
     }
 }
 

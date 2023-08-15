@@ -2,7 +2,7 @@ const { Midjourney } = require('midjourney');
 const axios = require('axios');
 const { pushToPusher } = require('./pusher');
 const { sha256, encryptJwtBase64 } = require('./encryption');
-const prisma = require('../lib/prisma');
+const prisma = require('../lib/edge-prisma');
 const cloudinary = require('../lib/cloudinary');
 const { UPLOAD_STATUS: STATUS } = require('../constants/status');
 
@@ -52,25 +52,14 @@ const uploadToMidjourney = async function (body) {
     }
 
 
+    console.log("Going to imagine");
     const result = await client.Imagine(
     prompt,
     async(uri, progress) => {
-        //   console.log("loading", uri, "progress", progress);
             console.log("pushing to channel: ", sha256(userId), uri, progress);
             updatedProgress = progress;
             newUri = uri;
             await pushToPusher(sha256(userId), `queued`, { secure_url: uri, progress });
-
-            if (upload) {
-                await prisma.upload.update({
-                    where: {
-                        id: upload.id
-                    },
-                    data: {
-                        progress
-                    }
-                })
-            }
         }
     ); 
     console.log("Done Imagining: ", result.uri);

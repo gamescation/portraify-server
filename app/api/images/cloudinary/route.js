@@ -9,7 +9,7 @@ async function POST(req, res) {
     console.log(`Post userId: ${userId}`);
 
     if (!userId) {
-        return NextResponse.json({status: false});
+        return NextResponse.json({success: false});
     }
 
     const timestamp = Math.round(new Date().getTime() / 1000);
@@ -19,7 +19,7 @@ async function POST(req, res) {
         process.env.CLOUDINARY_API_SECRET
     );
     console.log("Returning signature");
-    return NextResponse.json({ signature, timestamp, public_id, channel_id: sha256(userId) });
+    return NextResponse.json({ success: true, signature, timestamp, public_id, channel_id: sha256(userId) });
 }
 
 module.exports = {
