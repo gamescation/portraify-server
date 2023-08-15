@@ -59,7 +59,7 @@ const uploadToMidjourney = async function (body) {
             console.log("pushing to channel: ", sha256(userId), uri, progress);
             updatedProgress = progress;
             newUri = uri;
-            pushToPusher(sha256(userId), `queued`, { secure_url: uri, progress });
+            await pushToPusher(sha256(userId), `queued`, { secure_url: uri, progress });
 
             if (upload) {
                 await prisma.upload.update({
