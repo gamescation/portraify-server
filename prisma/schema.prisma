@@ -62,9 +62,12 @@ model image {
   archived  Boolean? @default(false)
   deleted   Boolean? @default(false)
   upscaled  Boolean? @default(false)
+  messageId String?
   data      Json?
+  originalImageId Int?
   @@index([userId, approved])
   @@index([userId, archived, createdAt, deleted])
+  @@index([originalImageId])
 }
 
 model upload {

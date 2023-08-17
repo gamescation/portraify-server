@@ -11,72 +11,74 @@ const getMessageIdFromUrl = (uri) => {
 }
 
 async function POST(req, res) {
-    const json = await req.json();
-    const userId = await userIdFromReq(json);
+    return NextResponse.json({ success: false });
+    // const json = await req.json();
+    // const userId = await userIdFromReq(json);
 
-    console.log("Checking upload status");
-    try {
-        const retryUpload = async(upload) => {
-            // queued, or not? lets just upload now in case
-            const result = await uploadToMidjourney(upload);
-            return result;
-        }
-        const upload = await prisma.upload.findFirst({
-            where: {
-                userId,
-                seen: false,
-                imageId: getIdFromEncryptedString(json.imageId, 'imageId')
-            }
-        })
+    // console.log("Checking upload status");
+    // try {
+    //     const retryUpload = async(upload) => {
+    //         // queued, or not? lets just upload now in case
+    //         const result = await uploadToMidjourney(upload);
+    //         return result;
+    //     }
+    //     const upload = await prisma.upload.findFirst({
+    //         where: {
+    //             userId,
+    //             imageId: getIdFromEncryptedString(json.imageId, 'imageId')
+    //         }
+    //     })
 
-        console.log("Upload status and progress: ", upload?.prompt, upload?.status, upload?.uri, upload?.progress, upload?.prompt);
-        if (!upload) {
-            const prompt = generatePrompt(secure_url, data)
-            const result = await uploadToMidjourney({ prompt, userId, imageId: upload.imageId });
-            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
-        }
+    //     console.log("Upload status and progress: ", upload?.prompt, upload?.status, upload?.uri, upload?.progress, upload?.prompt);
+    //     if (!upload) {
+    //         console.log("Recreating");
+    //         const prompt = generatePrompt(secure_url, data)
+    //         const result = await uploadToMidjourney({ prompt, userId, imageId: upload.imageId });
+    //         return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+    //     }
 
 
-        if (upload?.status === UPLOAD_STATUS.QUEUED) {
-            const result = await retryUpload(upload);
-            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
-        }
+    //     if (upload?.status === UPLOAD_STATUS.QUEUED) {
+    //         console.log("Queued");
+    //         // const result = await retryUpload(upload);
+    //         return NextResponse.json({ success: true, status: "QUEUED", complete: false })
+    //     }
         
-        if (upload?.status === UPLOAD_STATUS.PROCESSING) {
-            if (upload.uri) {
-                const messageId = getMessageIdFromUrl(upload.uri);
-                const discord = await checkDiscord({ messageId });
+    //     if (upload?.status === UPLOAD_STATUS.PROCESSING) {
+    //         if (upload.uri) {
+    //             const messageId = getMessageIdFromUrl(upload.uri);
+    //             const discord = await checkDiscord({ messageId });
 
-                console.log("discord message: ", discord);
+    //             console.log("discord message: ", discord);
 
-                return NextResponse.json({ success: true, status: upload?.status, complete: false })
-            } else {
-                const result = await retryUpload(upload);
-                return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
-            }
-        } else if (upload?.status === UPLOAD_STATUS.COMPLETE) {
-            console.log("This job is complete");
-            const image = await prisma.image.findFirst({
-                where: {
-                    id: upload?.generatedImageId
-                },
-                select: {
-                    id: true,
-                    secure_url: true
-                }
-            })
+    //             return NextResponse.json({ success: true, status: upload?.status, complete: false })
+    //         } else {
+    //             const result = await retryUpload(upload);
+    //             return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+    //         }
+    //     } else if (upload?.status === UPLOAD_STATUS.COMPLETE) {
+    //         console.log("This job is complete");
+    //         const image = await prisma.image.findFirst({
+    //             where: {
+    //                 id: upload?.generatedImageId
+    //             },
+    //             select: {
+    //                 id: true,
+    //                 secure_url: true
+    //             }
+    //         })
 
-            const { secure_url } = image;
-            return NextResponse.json({ success: true, generating: false, complete: true, secure_url, id: encryptJwtBase64({ data: { imageId: image.id }}) });
-        } else {
-            console.log("Upload not found");
-            const result = await retryUpload(upload);
-            return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
-        }
-    } catch(e) {
-        console.error(`Error checking upload status: ${e.message} ${e.stack}`);
-        return NextResponse.json({ success: false });
-    }
+    //         const { secure_url } = image;
+    //         return NextResponse.json({ success: true, generating: false, complete: true, secure_url, id: encryptJwtBase64({ data: { imageId: image.id }}) });
+    //     } else {
+    //         console.log("Upload not found");
+    //         const result = await retryUpload(upload);
+    //         return NextResponse.json({ success: true, status: "COMPLETE", complete: true, secure_url: result.secure_url, id: encryptJwtBase64({ data: { imageId: result.id }}), generated: true })
+    //     }
+    // } catch(e) {
+    //     console.error(`Error checking upload status: ${e.message} ${e.stack}`);
+    //     return NextResponse.json({ success: false });
+    // }
 }
 
 module.exports = {
