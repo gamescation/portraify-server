@@ -22,7 +22,11 @@ const handleUpscaledImage = async(message, image, userId) => {
             messageId: message_id
         },
         select: {
-            id: true
+            id: true,
+            secure_url: true,
+            generated: true,
+            choices: true,
+            createdAt: true
         }
     })
 

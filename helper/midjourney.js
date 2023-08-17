@@ -14,7 +14,11 @@ async function handleMessage(message, userId, imageId, searchString) {
                 messageId: message.id
             },
             select: {
-                id: true
+                id: true,
+                secure_url: true,
+                generated: true,
+                choices: true,
+                createdAt: true
             }
         })
 
