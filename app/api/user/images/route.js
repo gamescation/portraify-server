@@ -9,7 +9,7 @@ async function POST(req, res) {
     const userId = await userIdFromReq(json);
     const { page = 1, pageSize = 10 } = json;
 
-    console.log("Fetching images: ", page);
+    console.log("Fetching images: ", userId, page);
     try { 
         const images = await prisma.image.findMany({
             where: {

@@ -19,7 +19,10 @@ async function POST(req, res) {
         process.env.CLOUDINARY_API_SECRET
     );
     console.log("Returning signature");
-    return NextResponse.json({ success: true, signature, timestamp, public_id, channel_id: sha256(userId) });
+    return NextResponse.json({ success: true, signature, timestamp, public_id, channel_id: sha256(userId), 
+        cloudinary_api_key: process.env.CLOUDINARY_API_KEY, 
+        cloudinary_cloudname: process.env.CLOUDINARY_CLOUD_NAME 
+    });
 }
 
 module.exports = {

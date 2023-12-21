@@ -1,12 +1,13 @@
 const { NextResponse } = require("next/server");
 const prisma = require("../../../../lib/prisma");
-const { upscale } = require("../../../../helper/midjourney");
+const { upscale, upscaleWithMidjourney } = require("../../../../helper/midjourney");
 const cloudinary = require('../../../../lib/cloudinary');
 const { decryptJwtBase64 } = require("../../../../helper/encryption");
 const { userIdFromReq } = require("../../../../helper/userHelper");
 const { imageReturnValues } = require("../../../../helper/returnValues");
 const { search } = require("../../../../lib/midjourney-lite");
 const delay = require("../../../../helper/delay");
+const { Midjourney } = require("midjourney");
 
 const handleUpscaledImage = async(message, image, userId) => {
     // nothing to do
@@ -90,23 +91,33 @@ async function POST(req, res) {
             return NextResponse.json({ success: true });
         }
 
-        console.log("Upscaling job");
+        console.log("Upscaling job", choices);
+        let needToDelay = false;
         for (const choice of choices) {
-            const customId = image.data?.upscale[choice - 1];
+            console.log("Choice: ", choice);
             try {
-                const result = await upscale({ customId, messageId });
-                if (result) {
-                    upscaledImages = true;
-                }
+                const index = parseInt(choice) - 1;
+                const customId = image.data?.upscale[index];
+
+                if (customId) {
+                    console.log("upscaleWithMidjourney: ",  customId, index);
+                    const result = await upscaleWithMidjourney({ msgId: messageId, userId, imageId, customId, choice });
+                    if (result) {
+                        upscaledImages = result.upscaledImages;
+                        needToDelay = true;
+                    }
+                } 
+
             } catch(e) {
-                console.error(`Error upscaling image: ${e.message} ${e.stack}`);
+                console.log("failed to upscale: ", e.message, e.stack);
+                upscaledImages = false;
             }
         }
 
         const images = [];
-        if (upscaledImages && image.data.searchString) {
-            await delay(10000);
-            console.log("searching with searchString");
+        if (needToDelay  && upscaledImages && image.data.searchString) {
+            await delay(13000);
+            console.log("searching with searchString: ", image.data?.searchString);
             const messages = await search(image.data?.searchString);
 
             for(const message of messages) {
