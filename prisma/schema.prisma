@@ -64,7 +64,7 @@ model image {
   upscaled  Boolean? @default(false)
   messageId String?
   data      Json?
-  originalImageId Int?
+  originalImageId String?
   @@index([userId, approved])
   @@index([userId, archived, createdAt, deleted])
   @@index([originalImageId])

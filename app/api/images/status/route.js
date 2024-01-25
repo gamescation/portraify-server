@@ -11,6 +11,7 @@ async function POST(req, res) {
     console.log("Checking upload status");
     try {
         const { imageId, searchString } = json;
+        console.log("SearchString: ", searchString)
         const images = await findImages(searchString, userId, imageId);
 
         return NextResponse.json({ success: true, image: images?.length ? imageReturnValues(images[0]): undefined});

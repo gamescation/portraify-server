@@ -35,6 +35,14 @@ async function handleMessage(message, userId, imageId, searchString) {
         
         const imageName = `${imageId}-${((new Date()).getTime())}`;
         const imageUrl = message.attachments[0].url;
+        let originalImageId = imageId;
+
+        try {
+            originalImageId = decryptJwtBase64(imageId)?.imageId?.toString();
+        } catch(e) {
+            console.error(`Could not decryptImageId: ${e.message}`);
+            originalImageId = imageId.toString();
+        }
 
         try { 
             const cloudUpload = await cloudinary.uploader.upload(imageUrl, {
@@ -49,6 +57,8 @@ async function handleMessage(message, userId, imageId, searchString) {
             }).flat().filter(o => /^U/.test(o.label)).map((o) =>{
                 return o.custom_id;
             });
+
+
             console.log("Creating image for messageId: ", message.id);
             return prisma.image.create({
                 data: {
@@ -61,7 +71,7 @@ async function handleMessage(message, userId, imageId, searchString) {
                     generated: true,
                     approved: false,
                     choices: true,
-                    originalImageId: imageId,
+                    originalImageId,
                     messageId: message.id,
                     data: {
                         upscale: upscaleComponents,
@@ -75,7 +85,7 @@ async function handleMessage(message, userId, imageId, searchString) {
     }
 }
 
-async function createImage(searchString, imageId, userId, result) {
+async function createImage(searchString, imageId, userId, result, upscaled = false) {
     const imageName = `${imageId}-${((new Date()).getTime())}`;
     const cloudUpload = await cloudinary.uploader.upload(result.uri, {
         access_mode: 'public',
@@ -84,9 +94,11 @@ async function createImage(searchString, imageId, userId, result) {
     })
     const secure_url = cloudUpload.secure_url;
 
-    const upscaleComponents = result.options?.filter(o => /^U/.test(o.label)).map((o) =>{
+    const upscaleComponents = !upscaled && result.options?.filter(o => /^U/.test(o.label)).map((o) =>{
         return o.custom;
     })
+
+    console.log("Result: ", result);
     return prisma.image.create({
         data: {
             user: {
@@ -98,17 +110,18 @@ async function createImage(searchString, imageId, userId, result) {
             generated: true,
             approved: false,
             choices: true,
-            originalImageId: imageId,
+            originalImageId: imageId.toString(),
+            messageId: result.id,
+            upscaled,
             data: {
-                upscale: upscaleComponents,
+                upscale: upscaled ? null: upscaleComponents,
                 searchString
             }
         }
     })
 }
 
-async function findImages(searchString, userId, imageId, timeDelay = 30000) {
-    await delay(timeDelay);
+async function findImages(searchString, userId, imageId) {
     const messages = await search(searchString);
     const images = [];
 
@@ -133,56 +146,8 @@ const uploadToMidjourney = async function (body) {
 
     console.log("Imagining: ", prompt);
     // const imagine = await Imagine(prompt);
-    const searchString = `${encryptJwtBase64({ data: { imageId } })}-${(new Date()).getTime()}`;
-    console.log("searchString: ", searchString);
-    const promptWithData = `${prompt} --no ${searchString}`;
 
     try {
-        const client = new Midjourney({
-            ServerId: process.env.DISCORD_SERVER_ID,
-            ChannelId: process.env.DISCORD_CHANNEL_ID,
-            SalaiToken: process.env.DISCORD_AUTH,
-            Debug: false,
-            SessionId: sessionId,
-            Ws: false, //enable ws is required for remix mode (and custom zoom)
-        });
-        await client.init();
-        const result = await client.Imagine(
-            promptWithData);
-        console.log("Done Imagining: ", result?.uri);
-
-        return createImage(searchString, imageId, userId, result);
-    } catch(e) {
-        try {
-            await Imagine(promptWithData); 
-
-            const images = await findImages(searchString, userId, imageId);
-            if (images?.length) {
-                return images[0];
-            }
-        } catch(e) {
-            console.error(`Error with midjourney: ${e.message} ${e.stack}`);
-        }
-    }
-}
-
-
-const upscaleWithMidjourney = async function (body) {
-    console.log("Sending to midjourney");
-    const { msgId, userId, imageId, customId, choice  } = body;
-    console.log("Inputs: ", msgId, userId, imageId, customId, choice);
-    let needToDelay = false;
-    let upscaledImages = false;
-
-
-    try {
-        const result = await upscale({ customId, messageId: msgId });
-        if (result) {
-            upscaledImages = true;
-            needToDelay = true;
-        }
-    } catch(e) {
-        console.error(`Error upscaling image: ${e.message} ${e.stack}`);
         const client = new Midjourney({
             ServerId: process.env.DISCORD_SERVER_ID,
             ChannelId: process.env.DISCORD_CHANNEL_ID,
@@ -192,17 +157,79 @@ const upscaleWithMidjourney = async function (body) {
             Ws: true, //enable ws is required for remix mode (and custom zoom)
         });
         await client.init();
-        console.log("Upscale job: ", choice, msgId);
-        const result = await client.Custom({ msgId,  customId, flags: 0 });
+        console.log("client initialized");
+        const result = await client.Imagine(prompt);
+        console.log("Done Imagining: ", result.id, result?.uri);
+
+        return createImage(prompt, imageId, userId, result);
+    } catch(e) {
+        console.error(`Error imagining: ${e.message} ${e.stack}`)
+        throw Error("Error imagining");
+        // try {
+        //     await Imagine(promptWithData); 
+
+        //     const images = await findImages(searchString, userId, imageId);
+        //     if (images?.length) {
+        //         return images[0];
+        //     }
+        // } catch(e) {
+        //     console.error(`Error with midjourney: ${e.message} ${e.stack}`);
+        // }
+    }
+}
+
+
+const upscaleWithMidjourney = async function (body) {
+    console.log("Sending to midjourney");
+    const { msgId, userId, imageId, customId, choice, searchString } = body;
+    console.log("Inputs: ", msgId, userId, imageId, customId, choice);
+    const upscaledImages = [];
+    try {
+        const client = new Midjourney({
+            ServerId: process.env.DISCORD_SERVER_ID,
+            ChannelId: process.env.DISCORD_CHANNEL_ID,
+            SalaiToken: process.env.DISCORD_AUTH,
+            Debug: false,
+            SessionId: sessionId,
+            Ws: true, //enable ws is required for remix mode (and custom zoom)
+        });
+        await client.init();
+        console.log("Upscaling job: ", choice, msgId, customId);
+        const spl = customId.split('::');
+        const hash = spl[spl.length - 1];
+        console.log("hash: ", hash);
+        const result = await client.Upscale({ index: choice, msgId, hash, flags: 0 });
         if (result) {
-            upscaledImages = true;
-            return createImage(image.data?.searchString, imageId, userId, result);
+            console.log("ResultID: ", result.id);
+            const newImage = await createImage(searchString, imageId, userId, result, true);
+            upscaledImages.push(newImage);
         }
+        // const result = await upscale({ customId, messageId: msgId });
+        // if (result) {
+        //     upscaledImages = true;
+        //     needToDelay = true;
+        // }
+    } catch(e) {
+        console.error(`Error upscaling image: ${e.message} ${e.stack}`);
+        // const client = new Midjourney({
+        //     ServerId: process.env.DISCORD_SERVER_ID,
+        //     ChannelId: process.env.DISCORD_CHANNEL_ID,
+        //     SalaiToken: process.env.DISCORD_AUTH,
+        //     Debug: false,
+        //     SessionId: sessionId,
+        //     Ws: true, //enable ws is required for remix mode (and custom zoom)
+        // });
+        // await client.init();
+        // console.log("Upscale job: ", choice, msgId);
+        // const result = await client.Custom({ msgId,  customId, flags: 0 });
+        // if (result) {
+        //     upscaledImages = true;
+        //     return createImage(image.data?.searchString, imageId, userId, result);
+        // }
     }
 
     return {
         upscaledImages,
-        needToDelay
     }
 }
 
@@ -244,10 +271,10 @@ const presetBackgroundInfo = {
 
 
 const presetTypeInfo = {
-    "Portrait": "portrait style photo, official, passport like taken with a Canon, attempt to use the same face as in the photo",
-    "Headshot": "headshot style photo, official headshot, actor headshot, model headshot, unsplash style, taken with a Canon, attempt to use the same face as in the photo",
-    "Anime": "anime style photo, naruto, avatar the last airbender, restyle the person as anime",
-    "Graffiti": "graffiti style photo, restyle person as graffiti, tagging, spray paint style face",
+    "Portrait": "portrait style photo",
+    "Headshot": "headshot style photo",
+    "Anime": "anime style photo, naruto, avatar the last airbender",
+    "Graffiti": "graffiti in the background, restyle image as graffiti, tagging, spray paint style",
     "Street": "Ghettho imagery, dark, street life, thug life, gang",
     "Wild Life": "Animals, deer, alligator, crocodile, cow, bear, tiger, snake",
     "Food": "Hamburger, steak, lasagna, pasta, pizza, donut",
@@ -288,7 +315,7 @@ const presetTypeInfo = {
     // "Hawaii": "Hawaii beach island background", 
     // "Miami": "Miami beach sunny background",
     "Paris": {
-        "Food": "Baguette, croissant, brie"
+        "Food": "Baguette, croissant, brie, Eiffel tower"
     },
     // "Night Market": "Night Market background, food stalls, shopping",
     // "Nature Landscape": "Landscape background with sweeping horizons and beautiful views",
@@ -327,8 +354,16 @@ const  generatePrompt = (secure_url, data) => {
     if (presetTypeInfo[data.background] && presetTypeInfo[data.background][data.type]) {
         type = `${type}, ${presetTypeInfo[data.background][data.type]}`;
     }
-
-    return `${secure_url} ${type} ${gender} ${background} soft lighting, in focus, gentle lighting, clear skin --v 6.0 --iw 0.25 --no distort --ar 9:16 --s 750`;
+    return `Subject: ${secure_url} (use this photo as a reference) +
+    Type of image: ${type} +
+    Gender: ${gender} +
+    Environment: ${background} +
+    Phototype: photorealistic, editorial, medium-shot +
+    Subject Focus: Sharp in-focus, foreground +
+    Environment: slightly blurred +
+    Camera: cinematic moment +
+    Filmstock: captured on Kodak Ektachrome
+    --v 6.0 --iw 0.25 --ar 9:16 --s 50`;
 }
 
 
@@ -371,13 +406,14 @@ const startUpload = async(json, userId) => {
     })
 
     if (!image) {
-        return NextResponse.json({ success: false, message: "Could not find image" });
+        throw new Image("Could not find image by imageId: ", imageId);
     }
 
     const { secure_url } = image;
     const prompt = generatePrompt(secure_url, data)
     
-    return uploadToMidjourney({ prompt, userId, imageId: image.id});
+    console.log("uploading to MidJourney")
+    return uploadToMidjourney({ prompt, userId, imageId: image.id });
 }
 
 

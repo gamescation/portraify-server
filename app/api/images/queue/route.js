@@ -16,6 +16,7 @@ async function POST(req, res) {
 
     try {
         const image = await startUpload(json, userId);
+        console.log("image uploaded: ", image);
         return NextResponse.json({ success: true, image: image && imageReturnValues(image) });
     } catch (error) {
         logError(error);
